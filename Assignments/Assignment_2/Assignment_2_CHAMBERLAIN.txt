@@ -46,7 +46,9 @@ Your task is to run this script on ALL the .txt files buried within the “many_
 the sums of all the lines in each file. This output (on all those files) should be saved in a single file named
 “file_sums.txt” in “../../../Data_Course_YOUR_LAST_NAME/Assignments/Assignment_2/”
 
-
+isaac@mac Data_Course % for file in $(find Data/data-shell/many_files/ -type f -name "*.txt"); do
+    bash Data/data-shell/scripts/sum_lines.sh "$file"
+done > ../Data_Course_CHAMBERLAIN/Assignments/Assignment_2/file_sums.txt
 
 
 
