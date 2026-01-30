@@ -1,0 +1,53 @@
+1. For each of the filenames that begin with “M” in the directory “../../Data/data-shell/data/pdb” list the
+number of lines in each file:
+
+cd Desktop/Spring\ 2026/BIOL\ 3100/Data_Course/Data/data-shell/data/pdb
+wc -l m*
+
+2. Redirect the output from the previous task to a new file named “m_lines.txt” in
+“../../../Data_Course_YOUR_LAST_NAME/Assignments/Assignment_2/”
+
+wc -l m* > ../../../../../Data_Course_CHAMBERLAIN/Assignments/Assignment_2/m_lines.txt
+
+3. For the file “animals.txt” in “../../Data/data-shell/data/” get an alphabetical list of the unique an-
+imal types that were observed and redirect this list to a new file called “unique_animals.txt” in
+“../../../Data_Course_YOUR_LAST_NAME/Assignments/Assignment_2/”
+
+isaac@mac pdb % cd ../../../../../
+isaac@mac BIOL 3100 % cd Data_Course/              
+isaac@mac Data_Course % sort Data/data-shell/data/animals.txt | uniq > ../Data_Course_CHAMBERLAIN/Assignments/Assignment_2/unique_animals.txt
+
+4. In the directory “../../Data/” there is a file named “BioLog_Plate_Data.csv” Write a command that
+givesalistoftheuniquecarbonsubstratesthebiologplatemeasured, andwhichsavesthislistasanewfile
+named“unique_C-substrates.txt”in“../../../Data_Course_YOUR_LAST_NAME/Assignments/Assignment_2/”
+
+isaac@mac Data_Course % head -1 Data/BioLog_Plate_Data.csv 
+Sample ID,Rep,Well,Dilution,Substrate,Hr_24,Hr_48,Hr_144
+isaac@mac Data_Course % tail -n +2 Data/BioLog_Plate_Data.csv | cut -d',' -f5 | sort | uniq > ../Data_Course_CHAMBERLAIN/Assignments/Assignment_2/unique_C-substrates.txt
+
+5. Write a command that finds the longest .txt file (by number of lines) in the directory “../../Data/data-
+shell/data/”
+
+isaac@mac Data_Course % wc -l Data/data-shell/data/*.txt
+      20 Data/data-shell/data/amino-acids.txt
+       8 Data/data-shell/data/animals.txt
+      50 Data/data-shell/data/morse.txt
+     230 Data/data-shell/data/planets.txt
+       6 Data/data-shell/data/salmon.txt
+    3080 Data/data-shell/data/sunspot.txt
+    3394 total
+isaac@mac Data_Course % wc -l Data/data-shell/data/*.txt | sort -n | tail -1
+    3394 total
+    
+6. In the directory “../../Data/data-shell/many_files/” there are a large number of subdirectories. Buried
+annoyingly inside these subdirectories are some .txt files that all contain a list of numbers (one interger
+per line). There is a shell script in the directory “../../Data/data-shell/scripts” called “sum_lines.sh”
+Your task is to run this script on ALL the .txt files buried within the “many_files/” directory to output
+the sums of all the lines in each file. This output (on all those files) should be saved in a single file named
+“file_sums.txt” in “../../../Data_Course_YOUR_LAST_NAME/Assignments/Assignment_2/”
+
+
+
+
+
+
