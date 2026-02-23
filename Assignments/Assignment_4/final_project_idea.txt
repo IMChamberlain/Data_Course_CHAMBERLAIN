@@ -1,0 +1,6 @@
+Idea: 
+
+Data info: I will use data from my job. I'm hoping to automate some of the tracking we currently process with spreadsheet formulas. Some of this data includes protected health information- I will be keeping the column names, but all other data will be made up/ simulated to look similar to the actual data I use for my job. 
+
+Data simulation: I have my data, and I've replaced all the real data with fake data (fake names, phone numbers, birthdays, referral sources, appointments, etc.) 
+
