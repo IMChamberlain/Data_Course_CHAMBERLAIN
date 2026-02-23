@@ -1,0 +1,21 @@
+
+1:
+isaac@Mac ~ % cd Desktop 
+isaac@Mac Desktop % pwd
+/Users/isaac/Desktop
+isaac@Mac Desktop % mkdir BIOL3100_Exam1
+
+2:
+isaac@Mac BIOL3100_Exam1 % pwd
+/Users/isaac/Desktop/BIOL3100_Exam1
+
+3:
+isaac@Mac ~ % cd Desktop/Spring\ 2026/BIOL\ 3100/Data_Course/Data/Fastq_16S 
+isaac@Mac Fastq_16S % cp *.fastq /Users/isaac/Desktop/BIOL3100_Exam1/
+
+4-5:
+isaac@Mac BIOL3100_Exam1 % for file in *.fastq; do cp "$file" "$file.Chamberlain"; done
+
+6:
+isaac@Mac BIOL3100_Exam1 % wc -l F3D6_S194_L001_R1_001.fastq.Chamberlain
+   31956 F3D6_S194_L001_R1_001.fastq.Chamberlain
