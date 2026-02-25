@@ -4,11 +4,10 @@ library(dplyr)
 patients <- read.csv("Fake Data For Final Project - Fake Patient Info.csv")
 appointments <- read.csv("Fake Data For Final Project - Fake Appointment Info.csv")
 
-getwd()
-list.files()
-
-colnames(patients)
-colnames(appointments)
+appointments$Appt.Date <- as.POSIXct(
+  appointments$Appt.Date,
+  format = "%m/%d/%y %H:%M"
+)
 
 appointments$Appt.Date <- as.Date(appointments$Appt.Date)
 
