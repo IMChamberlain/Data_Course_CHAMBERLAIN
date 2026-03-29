@@ -1,0 +1,19 @@
+1. Are any of your predicted response values from your best model scientifically meaningless? Explain.
+
+No, the results are not meaningless. I don't see any negative values/ values that wouldn't make realistic sense. 
+
+2. In your plots, did you find any non-linear relationships?
+
+Yes- in my final plot that compares my predictions to the real data, the results are non-linear. Here's a link that goes through dealing with non-linear data in R: 
+
+http://tuos-bio-data-skills.github.io/intro-stats-book/non-linear-regression-in-R.html
+
+3. Write the code you would use to model the data found in "/Data/non_linear_relationship.csv" with a linear model. 
+
+non_linear_data <- read.csv("./Data/non_linear_relationship.csv")
+
+non_linear_mod <- nls(response ~ SSlogis(predictor, Asym, xmid, scal),
+
+data = non_linear_data)
+
+summary(non_linear_mod)
