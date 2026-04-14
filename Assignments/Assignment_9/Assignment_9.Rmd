@@ -42,3 +42,109 @@ ____________
 + That means I want to see, in your html report, your process of model evaluation and selection. Here's an [example](https://gzahn.github.io/data-course/Repository/Assignments/Assignment_9/example.html){target="_blank"}
 + Upload your **self-contained** R project, including knitted HTML report, to GitHub in *your* Assignment_9 directory
 
+# Analysis
+
+## Data Loading and Cleaning
+
+```{r message=FALSE, warning=FALSE}
+# Load
+library(tidyverse)
+
+# Read .csv
+df <- read.csv("./Data/GradSchool_Admissions.csv")
+
+# Convert admit and rank into factors
+df$admit <- as.factor(df$admit)
+df$rank <- as.factor(df$rank)
+
+summary(df)
+
+ggplot(df, aes(x = admit, y = gpa, fill = admit)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "GPA vs Graduate Admission",
+       x = "Admitted (0 = No, 1 = Yes)",
+       y = "Undergraduate GPA")
+```
+
+## More Exploring
+
+```{r message=FALSE, warning=FALSE}
+# GRE score vs admission
+ggplot(df, aes(x = admit, y = gre, fill = admit)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "GRE Score vs Graduate Admission",
+       x = "Admitted (0 = No, 1 = Yes)",
+       y = "GRE Score")
+
+# Admission rate by institution rank
+ggplot(df, aes(x = rank, fill = admit)) +
+  geom_bar(position = "fill") +
+  theme_minimal() +
+  labs(title = "Admission Rate by Undergraduate Institution Rank",
+       x = "Institution Rank (1 = Top-tier)",
+       y = "Proportion",
+       fill = "Admitted")
+```
+
+## Model Building
+
+```{r}
+model_full <- glm(admit ~ gre + gpa + rank, 
+                  data = df, 
+                  family = binomial)
+summary(model_full)
+```
+
+## Model Comparison and Selection
+
+```{r}
+# Reduced models to compare against full model
+model_no_gre <- glm(admit ~ gpa + rank, data = df, family = binomial)
+model_no_gpa <- glm(admit ~ gre + rank, data = df, family = binomial)
+model_rank_only <- glm(admit ~ rank, data = df, family = binomial)
+
+# Compare using AIC
+AIC(model_full, model_no_gre, model_no_gpa, model_rank_only)
+
+# Compare using likelihood ratio test
+anova(model_rank_only, model_no_gre, model_full, test = "Chisq")
+
+# Assign best model
+best_model <- model_full
+summary(best_model)
+
+# Predicted probability of admission across GPA, split by rank
+new_data <- expand.grid(
+  gpa  = seq(min(df$gpa), max(df$gpa), length.out = 100),
+  gre  = mean(df$gre),
+  rank = levels(df$rank)
+)
+
+new_data$predicted <- predict(best_model, newdata = new_data, type = "response")
+
+ggplot(new_data, aes(x = gpa, y = predicted, color = rank)) +
+  geom_line(linewidth = 1) +
+  theme_minimal() +
+  labs(title = "Predicted Probability of Admission by GPA and Institution Rank",
+       x = "GPA",
+       y = "Predicted Probability of Admission",
+       color = "Inst. Rank")
+```
+
+## Conclusions
+- If all other variables are constant, increasing your GPA by one unit/ point increases your odds of admission to grad school by about 2.23 times. 
+
+```{r message=FALSE, warning=FALSE}
+# Summary of admission rates
+df %>%
+  group_by(rank, admit) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = admit, values_from = n, names_prefix = "admit_") %>%
+  mutate(admission_rate = admit_1 / (admit_0 + admit_1))
+
+# Odds ratios with confidence intervals
+exp(coef(best_model))
+exp(confint(best_model))
+```
