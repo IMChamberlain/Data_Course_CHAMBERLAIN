@@ -1,0 +1,78 @@
+---
+title: "Exam 3"
+author: "Isaac Chamberlain"
+date: "10797985"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(broom)
+```
+
+```{r}
+salary_data <- read.csv("FacultySalaries_1995.csv")
+juniper_data <- read.csv("Juniper_Oils.csv")
+```
+
+```{r, warning=FALSE}
+# 1
+salary_long <- salary_data %>%
+  pivot_longer(cols = c("AvgAssistProfSalary", "AvgAssocProfSalary", "AvgFullProfSalary"), 
+               names_to = "Rank", 
+               values_to = "Salary") %>%
+  # "VIIB" was being shown as a fourth dataset, but it seemed like it was just empty. It wasn't shown in the instructions, so I removed it here. 
+  filter(!is.na(Tier) & Tier != "" & Tier != "VIIB") %>% 
+  mutate(Rank = recode(Rank, 
+                       "AvgAssistProfSalary" = "Assist", 
+                       "AvgAssocProfSalary" = "Assoc", 
+                       "AvgFullProfSalary" = "Full"),
+         Rank = factor(Rank, levels = c("Assist", "Assoc", "Full"))) %>%
+  drop_na(Salary)
+
+ggplot(salary_long, aes(x = Rank, y = Salary, fill = Rank)) +
+  geom_boxplot() +
+  facet_wrap(~Tier, nrow = 1) +
+  theme_minimal()
+```
+
+```{r}
+# 2
+salary_model <- aov(Salary ~ State + Tier + Rank, data = salary_long)
+summary(salary_model)
+```
+
+```{r}
+# 3
+chemical_names <- c("alpha.pinene","para.cymene","alpha.terpineol","cedr.9.ene","alpha.cedrene","beta.cedrene","cis.thujopsene","alpha.himachalene","beta.chamigrene","cuparene","compound.1","alpha.chamigrene","widdrol","cedrol","beta.acorenol","alpha.acorenol","gamma.eudesmol","beta.eudesmol","alpha.eudesmol","cedr.8.en.13.ol","cedr.8.en.15.ol","compound.2","thujopsenal")
+
+juniper_long <- juniper_data %>%
+  pivot_longer(cols = all_of(chemical_names), 
+               names_to = "ChemicalID", 
+               values_to = "Concentration")
+```
+
+```{r}
+# 4
+```{r, message=FALSE, warning=FALSE}
+ggplot(juniper_long, aes(x = YearsSinceBurn, y = Concentration)) +
+  geom_smooth(method = "loess", se = TRUE, color = "blue", fill = "lightblue") +
+  facet_wrap(~ChemicalID, scales = "free_y") +
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "white", color = "white"),
+    strip.text = element_text(size = 8, color = "black")
+  )
+```
+
+```{r, message=FALSE, warning=FALSE}
+# 5
+juniper_glm <- glm(Concentration ~ YearsSinceBurn * ChemicalID, data = juniper_long)
+
+juniper_results <- tidy(juniper_glm) %>%
+  filter(p.value < 0.05) %>%
+  mutate(term = str_remove(term, "ChemicalID"),
+         term = str_replace_all(term, "\\.", "-"))
+
+print(juniper_results)
+```
