@@ -1,0 +1,555 @@
+---
+title: "BIOL 3100 Final Project"
+author: "Isaac Chamberlain"
+output:
+  html_document:
+    theme: flatly
+    toc: false
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+options(scipen = 999)
+```
+
+```{r packages, include=FALSE}
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(DT)
+library(scales)
+```
+
+```{r data-prep, include=FALSE}
+patient_file <- "Fake Patient Info.csv"
+appointment_file <- "Fake Appointment Info.csv"
+
+patients_raw <- read.csv(patient_file, check.names = FALSE, stringsAsFactors = FALSE)
+appointments_raw <- read.csv(appointment_file, check.names = FALSE, stringsAsFactors = FALSE)
+
+patients <- patients_raw %>%
+  mutate(
+    patient_name = str_trim(paste(`First Name`, `Last Name`)),
+    birth_date = suppressWarnings(mdy(`Birth Date`)),
+    patient_status = na_if(Status, ""),
+    birth_gender = na_if(`Birth Gender`, ""),
+    referring_provider = na_if(`Referring Provider`, "")
+  )
+
+appointments <- appointments_raw %>%
+  mutate(
+    appointment_datetime = suppressWarnings(mdy_hm(`Appt Date`)),
+    appointment_date = as.Date(appointment_datetime),
+    provider = factor(Provider, levels = sort(unique(Provider))),
+    provider_label = paste("Provider", provider),
+    appointment_status = na_if(Status, ""),
+    visit_type = na_if(Summary, ""),
+    patient_name = str_trim(`Patient Name`),
+    no_show_flag = str_detect(str_to_lower(coalesce(appointment_status, "")), "no show"),
+    seen_flag = str_detect(
+      str_to_lower(coalesce(appointment_status, "")),
+      "checked in|payment complete|pt conf"
+    ),
+    new_patient_flag = str_detect(str_to_lower(coalesce(visit_type, "")), "new patient")
+  ) %>%
+  left_join(
+    patients %>%
+      select(patient_name, Age = `Age(yrs)`, patient_status, birth_gender, referring_provider),
+    by = "patient_name"
+  )
+
+min_date <- min(appointments$appointment_date, na.rm = TRUE)
+max_date <- max(appointments$appointment_date, na.rm = TRUE)
+provider_choices <- sort(unique(as.character(appointments$provider_label)))
+
+wrap_text <- function(x, width = 20) {
+  stringr::str_wrap(as.character(x), width = width)
+}
+```
+
+# Interactive Dashboard
+
+This dashboard is my final project. It allows me to see different statistics for our clinic as a whole, or for individual providers, during a specified date range. There is also a feature that runs a simple prediction for the number of patients we will be seeing per month up to 12 months in the future.
+
+This dashboard is based on data I use at work to track the performance of our family medicine clinic. The data used for this project follows the same structure as the data I use at work (same column names and number of columns), but all protected health information was removed and replaced with fake data for patient privacy. These are the two .csv files that were used for this dashboard:
+
+- `Fake Patient Info.csv`: patient information such as age, status (active, lead, etc.), gender, and referral source.
+- `Fake Appointment Info.csv`: appointment information such as provider, appointment date, visit summary, and appointment status.
+
+This, among other data, is important to monitor as we make process changes- it can tell us if our changes are making any difference, and if that difference is positive or negative. It can also help us predict where we'll be in the future so we can plan for future hires and other expenses. 
+
+<style>
+iframe.shiny-frame,
+iframe.shiny-frame-deferred {
+  height: 1250px !important;
+  min-height: 1250px !important;
+  border: none !important;
+}
+</style>
+
+```{r dashboard-app}
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body {
+        font-size: 16px;
+      }
+      .container-fluid {
+        max-width: 1380px;
+      }
+      h1.title {
+        font-size: 2.4rem;
+        margin-bottom: 0.2em;
+      }
+      h1, h2 {
+        line-height: 1.15;
+      }
+      .dashboard-title {
+        margin: 0 0 14px 0;
+      }
+      .control-label {
+        font-weight: 700;
+      }
+      .well {
+        border: none;
+        border-radius: 16px;
+        background: #f4f7fb;
+        box-shadow: 0 8px 20px rgba(25, 55, 85, 0.08);
+      }
+      .metric-card {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid #d7e3f0;
+        border-radius: 16px;
+        padding: 14px 16px;
+        min-height: 112px;
+        box-shadow: 0 8px 18px rgba(25, 55, 85, 0.08);
+        margin-bottom: 14px;
+      }
+      .metric-card h4 {
+        margin-top: 0;
+        margin-bottom: 6px;
+        font-size: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #4b6278;
+      }
+      .metric-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #20364d;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+      .chart-panel {
+        background: #ffffff;
+        border: 1px solid #d7e3f0;
+        border-radius: 16px;
+        padding: 10px 12px 4px 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 8px 18px rgba(25, 55, 85, 0.08);
+      }
+      .nav-tabs {
+        margin-bottom: 14px;
+      }
+      .nav-tabs > li > a {
+        border-radius: 10px 10px 0 0;
+        font-weight: 600;
+      }
+      .plotly .modebar {
+        display: none !important;
+      }
+      .irs-grid-text {
+        display: none !important;
+      }
+      .irs-grid-pol.small {
+        display: block !important;
+      }
+      .dataTables_wrapper {
+        padding: 4px;
+      }
+      table.dataTable td {
+        white-space: normal !important;
+        word-break: break-word;
+        vertical-align: top;
+      }
+      div.dataTables_scrollBody {
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+      }
+    "))
+  ),
+  div(class = "dashboard-title", h3("Clinic Operations Dashboard")),
+  sidebarLayout(
+    sidebarPanel(
+      width = 3,
+      selectInput(
+        inputId = "provider_select",
+        label = "Provider view",
+        choices = c("All Providers", provider_choices),
+        selected = "All Providers"
+      ),
+      dateRangeInput(
+        inputId = "date_range",
+        label = "Appointment date range",
+        start = min_date,
+        end = max_date,
+        min = min_date,
+        max = max_date,
+        format = "m-d-yy"
+      ),
+      radioButtons(
+        inputId = "trend_mode",
+        label = "Trend display",
+        choices = c("Actual only", "Forecast only", "Actual + Forecast"),
+        selected = "Actual + Forecast"
+      ),
+      sliderInput(
+        inputId = "forecast_months",
+        label = "Months to forecast",
+        min = 1,
+        max = 12,
+        value = 3,
+        step = 1
+      ),
+      helpText(
+        "Use these controls to compare the entire clinic with a single provider",
+        "and to view a simple short-term forecast based on past monthly volume."
+      )
+    ),
+    mainPanel(
+      width = 9,
+      tabsetPanel(
+        tabPanel(
+          "Overview",
+          fluidRow(
+            column(4, div(class = "metric-card", h4("Appointments"), div(class = "metric-value", textOutput("total_appointments")))),
+            column(4, div(class = "metric-card", h4("Unique Patients"), div(class = "metric-value", textOutput("unique_patients")))),
+            column(4, div(class = "metric-card", h4("Show Rate"), div(class = "metric-value", textOutput("show_rate"))))
+          ),
+          fluidRow(
+            column(4, div(class = "metric-card", h4("New Patients Scheduled"), div(class = "metric-value", textOutput("new_patients_scheduled")))),
+            column(4, div(class = "metric-card", h4("New Patients Seen"), div(class = "metric-value", textOutput("new_patients_seen")))),
+            column(4, div(class = "metric-card", h4("New Patient Show Rate"), div(class = "metric-value", textOutput("new_patient_show_rate"))))
+          ),
+          fluidRow(
+            column(12, div(class = "chart-panel", plotlyOutput("monthly_trend_plot", height = "320px")))
+          ),
+          fluidRow(
+            column(12, div(class = "chart-panel", plotlyOutput("status_plot", height = "320px")))
+          )
+        ),
+        tabPanel(
+          "Patterns",
+          fluidRow(
+            column(12, div(class = "chart-panel", plotlyOutput("weekday_plot", height = "320px")))
+          ),
+          fluidRow(
+            column(12, div(class = "chart-panel", plotlyOutput("referral_plot", height = "320px")))
+          ),
+          fluidRow(
+            column(12, div(class = "chart-panel", DTOutput("summary_table")))
+          )
+        )
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  filtered_appointments <- reactive({
+    dat <- appointments %>%
+      filter(!is.na(appointment_date)) %>%
+      filter(appointment_date >= input$date_range[1], appointment_date <= input$date_range[2])
+
+    if (input$provider_select != "All Providers") {
+      dat <- dat %>% filter(provider_label == input$provider_select)
+    }
+
+    dat
+  })
+
+  monthly_actual <- reactive({
+    filtered_appointments() %>%
+      mutate(month = floor_date(appointment_date, unit = "month")) %>%
+      count(month, name = "appointments") %>%
+      arrange(month)
+  })
+
+  monthly_forecast <- reactive({
+    actual <- monthly_actual()
+
+    if (nrow(actual) < 3) {
+      return(tibble())
+    }
+
+    model_data <- actual %>%
+      mutate(month_index = row_number())
+
+    fit <- lm(appointments ~ month_index, data = model_data)
+
+    future <- tibble(
+      month_index = seq(max(model_data$month_index) + 1, max(model_data$month_index) + input$forecast_months),
+      month = seq(max(model_data$month) %m+% months(1), by = "1 month", length.out = input$forecast_months)
+    )
+
+    future %>%
+      mutate(
+        appointments = predict(fit, newdata = future),
+        appointments = if_else(appointments < 0, 0, appointments)
+      )
+  })
+
+  output$total_appointments <- renderText({
+    comma(nrow(filtered_appointments()))
+  })
+
+  output$unique_patients <- renderText({
+    comma(n_distinct(filtered_appointments()$patient_name))
+  })
+
+  output$show_rate <- renderText({
+    dat <- filtered_appointments()
+
+    if (nrow(dat) == 0) {
+      return("N/A")
+    }
+
+    percent(mean(dat$seen_flag, na.rm = TRUE), accuracy = 0.1)
+  })
+
+  output$new_patients_scheduled <- renderText({
+    dat <- filtered_appointments() %>%
+      filter(new_patient_flag)
+
+    if (nrow(dat) == 0) {
+      return("0")
+    }
+
+    comma(nrow(dat))
+  })
+
+  output$new_patients_seen <- renderText({
+    dat <- filtered_appointments() %>%
+      filter(new_patient_flag)
+
+    if (nrow(dat) == 0) {
+      return("0")
+    }
+
+    comma(sum(dat$seen_flag, na.rm = TRUE))
+  })
+
+  output$new_patient_show_rate <- renderText({
+    dat <- filtered_appointments() %>%
+      filter(new_patient_flag)
+
+    if (nrow(dat) == 0) {
+      return("N/A")
+    }
+
+    percent(mean(dat$seen_flag, na.rm = TRUE), accuracy = 0.1)
+  })
+
+  output$monthly_trend_plot <- renderPlotly({
+    actual <- monthly_actual()
+    forecast <- monthly_forecast()
+    p <- plot_ly()
+
+    if (input$trend_mode %in% c("Actual only", "Actual + Forecast") && nrow(actual) > 0) {
+      p <- p %>%
+        add_lines(
+          data = actual,
+          x = ~month,
+          y = ~appointments,
+          name = "Actual",
+          color = I("#1b6ca8"),
+          line = list(width = 3),
+          hovertemplate = paste(
+            "Month: %{x|%b %Y}<br>",
+            "Appointments: %{y:,}",
+            "<extra></extra>"
+          )
+        ) %>%
+        add_markers(
+          data = actual,
+          x = ~month,
+          y = ~appointments,
+          name = "Actual",
+          color = I("#1b6ca8"),
+          marker = list(size = 7),
+          hovertemplate = paste(
+            "Month: %{x|%b %Y}<br>",
+            "Appointments: %{y:,}",
+            "<extra></extra>"
+          ),
+          showlegend = FALSE
+        )
+    }
+
+    if (input$trend_mode %in% c("Forecast only", "Actual + Forecast") && nrow(forecast) > 0) {
+      p <- p %>%
+        add_lines(
+          data = forecast,
+          x = ~month,
+          y = ~appointments,
+          name = "Forecast",
+          color = I("#d95f02"),
+          line = list(width = 3, dash = "dash"),
+          hovertemplate = paste(
+            "Forecast month: %{x|%b %Y}<br>",
+            "Predicted appointments: %{y:,.0f}",
+            "<extra></extra>"
+          )
+        ) %>%
+        add_markers(
+          data = forecast,
+          x = ~month,
+          y = ~appointments,
+          name = "Forecast",
+          color = I("#d95f02"),
+          marker = list(size = 7),
+          hovertemplate = paste(
+            "Forecast month: %{x|%b %Y}<br>",
+            "Predicted appointments: %{y:,.0f}",
+            "<extra></extra>"
+          ),
+          showlegend = FALSE
+        )
+    }
+
+    p %>%
+      layout(
+        title = list(text = "<b>Monthly Appointment Volume</b>"),
+        xaxis = list(title = "", tickformat = "%b\n%Y"),
+        yaxis = list(title = "Appointments", tickformat = ",d"),
+        legend = list(orientation = "h", x = 0, y = 1.12),
+        margin = list(l = 70, r = 20, t = 55, b = 55),
+        hoverlabel = list(align = "left")
+      )
+  })
+
+  output$status_plot <- renderPlotly({
+    dat <- filtered_appointments() %>%
+      mutate(appointment_status = fct_lump_n(appointment_status, n = 6)) %>%
+      count(appointment_status, sort = TRUE) %>%
+      mutate(
+        status_label = wrap_text(appointment_status, width = 18),
+        hover_text = paste0("Status: ", appointment_status, "<br>Appointments: ", comma(n))
+      )
+
+    p <- ggplot(dat, aes(x = reorder(status_label, n), y = n, fill = appointment_status, text = hover_text)) +
+      geom_col(show.legend = FALSE) +
+      coord_flip() +
+      theme_minimal(base_size = 12) +
+      labs(
+        title = "Appointment Status Distribution",
+        x = NULL,
+        y = "Number of Appointments"
+      ) +
+      scale_y_continuous(labels = comma) +
+      theme(plot.title = element_text(face = "bold"))
+
+    ggplotly(p, tooltip = "text") %>%
+      layout(
+        margin = list(l = 130, r = 20, t = 55, b = 30),
+        hoverlabel = list(align = "left"),
+        showlegend = FALSE
+      )
+  })
+
+  output$weekday_plot <- renderPlotly({
+    dat <- filtered_appointments() %>%
+      mutate(weekday = wday(appointment_date, label = TRUE, abbr = FALSE, week_start = 1)) %>%
+      filter(weekday %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")) %>%
+      count(weekday) %>%
+      mutate(
+        hover_text = paste0("Day: ", weekday, "<br>Appointments: ", comma(n))
+      )
+
+    p <- ggplot(dat, aes(x = weekday, y = n, group = 1, text = hover_text)) +
+      geom_line(color = "#2a9d8f", linewidth = 1) +
+      geom_point(color = "#2a9d8f", size = 2.4) +
+      theme_minimal(base_size = 12) +
+      labs(
+        title = "Appointments by Day of Week",
+        x = NULL,
+        y = "Number of Appointments"
+      ) +
+      scale_y_continuous(labels = comma) +
+      theme(plot.title = element_text(face = "bold"))
+
+    ggplotly(p, tooltip = "text") %>%
+      layout(margin = list(l = 60, r = 20, t = 55, b = 50), hoverlabel = list(align = "left"))
+  })
+
+  output$referral_plot <- renderPlotly({
+    dat <- filtered_appointments() %>%
+      filter(!is.na(referring_provider), referring_provider != "") %>%
+      mutate(referring_provider = fct_lump_n(referring_provider, n = 6)) %>%
+      count(referring_provider, sort = TRUE) %>%
+      mutate(
+        referral_label = wrap_text(referring_provider, width = 18),
+        hover_text = paste0("Referral source: ", referring_provider, "<br>Patients: ", comma(n))
+      )
+
+    p <- ggplot(dat, aes(x = reorder(referral_label, n), y = n, fill = referring_provider, text = hover_text)) +
+      geom_col(show.legend = FALSE) +
+      coord_flip() +
+      theme_minimal(base_size = 12) +
+      labs(
+        title = "Referrals from Each Source",
+        x = NULL,
+        y = "Number of Patients"
+      ) +
+      scale_y_continuous(labels = comma) +
+      theme(plot.title = element_text(face = "bold"))
+
+    ggplotly(p, tooltip = "text") %>%
+      layout(margin = list(l = 135, r = 20, t = 55, b = 30), hoverlabel = list(align = "left"))
+  })
+
+  output$summary_table <- renderDT({
+    dat <- filtered_appointments()
+
+    summary_tbl <- dat %>%
+      group_by(provider_label) %>%
+      summarise(
+        appointments = n(),
+        unique_patients = n_distinct(patient_name),
+        show_rate = percent(mean(seen_flag, na.rm = TRUE), accuracy = 0.1),
+        new_patients = sum(new_patient_flag, na.rm = TRUE),
+        common_visit = names(sort(table(visit_type), decreasing = TRUE))[1],
+        .groups = "drop"
+      ) %>%
+      mutate(common_visit = wrap_text(common_visit, width = 26)) %>%
+      arrange(desc(appointments)) %>%
+      rename(
+        Provider = provider_label,
+        Appointments = appointments,
+        `Unique Patients` = unique_patients,
+        `Show Rate` = show_rate,
+        `New Patients` = new_patients,
+        `Most Common Visit Type` = common_visit
+      )
+
+    datatable(
+      summary_tbl,
+      rownames = FALSE,
+      options = list(
+        pageLength = 5,
+        dom = "tip",
+        autoWidth = FALSE,
+        scrollX = TRUE,
+        columnDefs = list(
+          list(width = "110px", targets = c(0, 1, 2, 3)),
+          list(width = "180px", targets = 4)
+        )
+      )
+    )
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
